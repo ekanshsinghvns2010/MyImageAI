@@ -1,0 +1,9 @@
+MyImageAI dependencies
+
+torch
+torchvision
+numpy
+Pillow
+matplotlib
+tqdm
+gradio
