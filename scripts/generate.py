@@ -1,4 +1,5 @@
-"""Generate images using a trained MyImageAI checkpoint."""
+
+"""Generate RGB images from a trained MyImageAI checkpoint."""
 
 import argparse
 from pathlib import Path
@@ -16,15 +17,15 @@ from src.diffusion import Diffusion
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate grayscale images with MyImageAI."
+        description="Generate images using MyImageAI."
     )
     parser.add_argument(
         "--checkpoint",
-        default="/content/drive/MyDrive/MyImageAI/checkpoints/latest.pt",
+        default="/content/drive/MyDrive/MyImageAI/cifar10_checkpoints/latest.pt",
     )
     parser.add_argument(
         "--output",
-        default="/content/drive/MyDrive/MyImageAI/generated.png",
+        default="/content/drive/MyDrive/MyImageAI/cifar10_generated.png",
     )
     parser.add_argument("--count", type=int, default=16)
     parser.add_argument("--timesteps", type=int, default=None)
@@ -37,9 +38,7 @@ def main():
     checkpoint_path = Path(args.checkpoint)
 
     if not checkpoint_path.is_file():
-        parser.error(
-            f"Checkpoint not found: {checkpoint_path}"
-        )
+        parser.error(f"Checkpoint not found: {checkpoint_path}")
 
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
@@ -53,8 +52,14 @@ def main():
 
     config = checkpoint.get("model_config", {})
 
+    if config.get("dataset") != "CIFAR10":
+        parser.error(
+            "This generator expects a CIFAR-10 checkpoint. "
+            "Your MNIST checkpoint is a separate model."
+        )
+
     model = MyImageAIModel(
-        in_channels=config.get("in_channels", 1),
+        in_channels=config.get("in_channels", 3),
         base_channels=config.get("base_channels", 64),
         time_dim=config.get("time_dim", 128),
     ).to(device)
@@ -68,31 +73,37 @@ def main():
         else checkpoint.get("timesteps", 300)
     )
 
+    if timesteps != checkpoint.get("timesteps", 300):
+        parser.error(
+            "Use the same timestep count used during training."
+        )
+
     if timesteps < 1:
-        parser.error("--timesteps must be at least 1")
+        parser.error("--timesteps must be positive")
 
     diffusion = Diffusion(
         timesteps=timesteps,
         device=device,
     )
 
-    print("MyImageAI image generation starting")
+    print("MyImageAI RGB generation")
     print("Device:", device)
     print("Images:", args.count)
+    print("Resolution: 32 x 32 RGB")
     print("Diffusion steps:", timesteps)
 
     images = diffusion.sample(
         model,
-        image_size=28,
+        image_size=32,
         batch_size=args.count,
-        channels=1,
+        channels=3,
     )
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     save_image(
-        (images + 1) / 2,
+        (images + 1).clamp(0, 2) / 2,
         str(output_path),
         nrow=4,
     )
