@@ -1,5 +1,6 @@
 
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,13 +15,16 @@ class SinusoidalTimeEmbedding(nn.Module):
         half = self.dim // 2
         scale = math.log(10000) / max(half - 1, 1)
         frequencies = torch.exp(
-            torch.arange(half, device=timesteps.device, dtype=torch.float32)
-            * -scale
+            torch.arange(
+                half, device=timesteps.device, dtype=torch.float32
+            ) * -scale
         )
         angles = timesteps.float().unsqueeze(1) * frequencies.unsqueeze(0)
         embedding = torch.cat([angles.sin(), angles.cos()], dim=1)
         if embedding.shape[1] < self.dim:
-            embedding = F.pad(embedding, (0, self.dim - embedding.shape[1]))
+            embedding = F.pad(
+                embedding, (0, self.dim - embedding.shape[1])
+            )
         return embedding
 
 
@@ -59,22 +63,24 @@ class SelfAttention2d(nn.Module):
         b, c, h, w = x.shape
         residual = x
         tokens = self.norm(x).flatten(2).transpose(1, 2)
-        tokens, _ = self.attention(tokens, tokens, tokens, need_weights=False)
+        tokens, _ = self.attention(
+            tokens, tokens, tokens, need_weights=False
+        )
         tokens = tokens.transpose(1, 2).reshape(b, c, h, w)
         return residual + self.proj(tokens) / math.sqrt(2.0)
 
 
 class MyImageAIModelV5(nn.Module):
     """
-    128x128 class-conditioned noise-prediction U-Net.
-    Classes: cat=0, dog=1, wild=2, null/unconditional=3.
+    128x128 class-conditioned diffusion U-Net.
+    cat=0, dog=1, null/unconditional=2.
     """
     def __init__(
         self,
         image_channels=3,
         base_channels=48,
         time_dim=192,
-        num_classes=3,
+        num_classes=2,
         dropout=0.05,
     ):
         super().__init__()
@@ -83,12 +89,10 @@ class MyImageAIModelV5(nn.Module):
         self.num_classes = num_classes
         self.null_class = num_classes
 
-        c1, c2, c3, c4 = (
-            base_channels,
-            base_channels * 2,
-            base_channels * 3,
-            base_channels * 4,
-        )
+        c1 = base_channels
+        c2 = base_channels * 2
+        c3 = base_channels * 3
+        c4 = base_channels * 4
 
         self.time_mlp = nn.Sequential(
             SinusoidalTimeEmbedding(time_dim),
@@ -132,6 +136,8 @@ class MyImageAIModelV5(nn.Module):
             raise ValueError("Expected input shaped [B, 3, H, W].")
         if labels.ndim != 1 or labels.shape[0] != x.shape[0]:
             raise ValueError("labels must have shape [B].")
+        if labels.min() < 0 or labels.max() > self.null_class:
+            raise ValueError("Label index is outside the supported range.")
 
         emb = self.time_mlp(timesteps) + self.class_embedding(labels)
 
